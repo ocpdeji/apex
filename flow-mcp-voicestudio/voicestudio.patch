@@ -1,0 +1,949 @@
+From fb483d51ea19b4c6d4e789aff6b59030ea48a149 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 23 Oct 2026 18:34:41 +0000
+Subject: [PATCH] Add VoiceStudio as a premium narration engine
+
+flow_narrate gains engine "voicestudio": the free VoiceStudio app on this
+computer, with saved cloned or designed voices, engine and built-in voice
+choice, language, personality, speed, quality, steps, guidance, seed,
+finishing effect, denoise, exact length, bit depth and pronunciation, and
+scripts up to 20,000 characters. New tools flow_voice_clone and
+flow_voice_design; flow_voices reports VoiceStudio's status and options.
+Flow Studio's Voice tab gets the same controls plus clone and design forms.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01UYtyHy26v1e6uPSVEQ6Wzb
+---
+ README.md          |  30 +++-
+ src/core.ts        |  83 +++++++++--
+ src/index.ts       |  29 +++-
+ src/remote.ts      |   2 +
+ src/voicestudio.ts | 333 +++++++++++++++++++++++++++++++++++++++++++++
+ studio/index.html  | 225 +++++++++++++++++++++++++++---
+ 6 files changed, 668 insertions(+), 34 deletions(-)
+ create mode 100644 src/voicestudio.ts
+
+diff --git a/README.md b/README.md
+index 1ecf800..966aa24 100644
+--- a/README.md
++++ b/README.md
+@@ -27,6 +27,7 @@ New here? [GETTING-STARTED.md](GETTING-STARTED.md) takes you from nothing to you
+ | **A Google account** | Free. Flow gives every account 50 credits a day; a paid Google AI plan adds more and unlocks 1080p downloads. Developed on a Pro plan |
+ | **FFmpeg** *(optional)* | Mac: `brew install ffmpeg` · Windows: `winget install Gyan.FFmpeg`. Needed only to join clips, mix music or record narration |
+ | **A Google AI Studio key** *(optional, free)* | Only for the Google narration voices. See below |
++| **VoiceStudio** *(optional, free)* | The premium narration engine: your own cloned or designed voices in 646 languages. See below |
+ | **whisper.cpp** *(optional, free)* | Only for captions: it hears the words, on your computer. Mac: `brew install whisper-cpp` · Windows: `whisper-cli.exe` from [the whisper.cpp releases](https://github.com/ggml-org/whisper.cpp/releases), on your PATH. The speech model it needs downloads by itself the first time you caption a video: 148 MB for English, 574 MB for any other language |
+ 
+ A display must stay awake: the Chrome window is really being driven, so the machine cannot be
+@@ -202,8 +203,10 @@ agree on what is running. That API listens on 127.0.0.1 only and needs a per-run
+ | `flow_character_edit` | Restyle an existing character in place (free) and save the new portrait; name, personality and voice are kept, so every scene referencing it updates. Pass `look` with the updated description; with only a name it re-saves the current portrait |
+ | `flow_characters` | List the project's characters |
+ | `flow_techniques` | 39 film-technique prompt presets (camera moves, product shots, transitions, image commands); pass an id as a scene's `technique` |
+-| `flow_narrate` | Free narration audio, any length: `gemini` (Google AI Studio text-to-speech, with the same voices Flow has, plus a `style` note) or `mac` (a voice installed on this computer, no key needed) |
+-| `flow_voices` | Narrator voices available, and whether a Google key is set up |
++| `flow_narrate` | Free narration audio: `gemini` (Google AI Studio text-to-speech, with the same voices Flow has, plus a `style` note), `mac` (a voice installed on this computer, no key needed) or `voicestudio` (premium: your own cloned or designed voices, 646 languages, personality, speed, quality, finishing effect, seed, exact length, whole scripts in one take) |
++| `flow_voices` | Narrator voices available, whether a Google key is set up, and VoiceStudio's status, voices, engines, personalities and effects |
++| `flow_voice_clone` | Make a VoiceStudio voice from a 5-30 second recording (only with the speaker's permission) |
++| `flow_voice_design` | Make a VoiceStudio voice from a description (gender, age, pitch, whisper, accent); `preview_only` checks the description first |
+ | `flow_captions` | Burn spoken-word captions into any video, landscape or vertical, in one of five styles, at any height and size, in normal, capital or lowercase letters, in about 100 languages; returns the transcript so a misheard word can be fixed and the call repeated (local whisper.cpp, Chrome and FFmpeg, no credits) |
+ | `flow_transcribe` | Hear the words in any video or audio on your computer, with each word's start and end time (local whisper.cpp, free) |
+ | `flow_assemble` | Join clips into one MP4 (a project's clips, or any you list, in order) with optional music and voiceover, and separate volume for the clips' own sound. A voiceover can also be built line by line (`voice_lines`), each line cut from a take and placed at its own moment, for narration timed to on-screen titles (local FFmpeg, no credits) |
+@@ -224,6 +227,26 @@ Mac, the built-in speech voices on Windows. For Google's voices (the same ones F
+ key → Save key**. It's checked with Google before it's saved, and stored only on your computer. Or set
+ `GEMINI_API_KEY`. Either way, never paste the key into a chat; it would end up in the conversation history.
+ 
++### Premium narration with VoiceStudio (optional)
++
++[VoiceStudio](https://github.com/debpalash/VoiceStudio) is a free, open-source voice app that runs on your own
++computer. With it open, `flow_narrate` with `engine: "voicestudio"` (or **Flow Studio → Voice → VoiceStudio ✦**) speaks
++in your own cloned or designed voices, in 646 languages, with personality presets, speed (0.5-2x), quality
++(draft, balanced, studio), a finishing effect (broadcast, cinematic, podcast, warm, bright, raw), a fixed seed for a
++repeatable read, an exact length to fit a shot, and whole scripts of up to 20,000 characters in one take. It also lets you
++pick any other speech engine you've installed in VoiceStudio, and that engine's built-in voices.
++
++1. Install it. Windows, in PowerShell: `irm https://voicestudio.sh/install | iex`. Mac, in Terminal:
++   `curl -fsSL https://voicestudio.sh/install | sh`. Or download it from its
++   [releases page](https://github.com/debpalash/VoiceStudio/releases/latest).
++2. Open it once and let it finish its first-run setup (it downloads its voice model, about 2.3 GB). It runs on any
++   computer, faster with a graphics card.
++3. Keep VoiceStudio open while you use Flow. **Flow Studio → Voice → VoiceStudio ✦** shows a green light when it's
++   ready, and lets you clone a voice from a recording or design one from a description.
++
++Flow talks to VoiceStudio at `http://127.0.0.1:3900`. Set `VOICESTUDIO_URL` to use one elsewhere (and
++`OMNIVOICE_API_KEY` if that one needs a key). Only clone a voice that is yours or that you have permission to use.
++
+ ---
+ 
+ ## Behaviour and settings
+@@ -235,7 +258,7 @@ key → Save key**. It's checked with Google before it's saved, and stored only
+ - Any Google account language works. The server finds Flow's buttons by their English names, so its
+   Chrome window always shows Flow in English (it adds `?hl=en` to the address). Your account's own
+   language setting is never changed, and prompts can be written in any language.
+-- Environment variables: `GEMINI_API_KEY`, `FLOW_MCP_PORT` (8787), `FLOW_MCP_OUTPUT`,
++- Environment variables: `GEMINI_API_KEY`, `VOICESTUDIO_URL` (http://127.0.0.1:3900), `OMNIVOICE_API_KEY`, `FLOW_MCP_PORT` (8787), `FLOW_MCP_OUTPUT`,
+   `FLOW_MCP_HOME`, `FLOW_MCP_CDP_PORT` (9333), `FLOW_MCP_CHROME`, `FLOW_MCP_PAUSE_MIN_S`,
+   `FLOW_MCP_PAUSE_MAX_S`.
+ 
+@@ -247,6 +270,7 @@ key → Save key**. It's checked with Google before it's saved, and stored only
+ | *"Not signed in"* or *"no project open"* | Run `npm run login`, sign in, open a Flow project, leave the window open |
+ | A clip generated but no file arrived | The media is still in Flow. `flow_download` pulls it back for nothing. Never re-generate and pay twice |
+ | Everything times out | The Chrome window was closed, or the machine slept. Reopen it with `npm run login` |
++| *"VoiceStudio isn't running"* | Open the VoiceStudio app and wait for it to finish starting, then try again (Flow Studio's Voice tab has a Refresh button) |
+ 
+ ---
+ 
+diff --git a/src/core.ts b/src/core.ts
+index 95d6993..d72dbe4 100644
+--- a/src/core.ts
++++ b/src/core.ts
+@@ -10,6 +10,7 @@ import { characterLook, createCharacter, downloadAsset, trashAsset, editCharacte
+ import { JobQueue, type Job } from "./queue.js";
+ import { BIN, COMPUTER, IS_MAC, IS_WIN, moveToBin } from "./platform.js";
+ import { TECHNIQUES, techniqueById } from "./techniques.js";
++import { cloneVoice, designVoice, speakWithVoiceStudio, voiceStudioCatalog } from "./voicestudio.js";
+ 
+ export const OUTPUT_ROOT = process.env.FLOW_MCP_OUTPUT ?? join(homedir(), "flow-mcp-out");
+ const words = (s: string) => s.split(/[^a-z0-9]+/i).filter((w) => w.length > 3).map((w) => w.toLowerCase());
+@@ -177,14 +178,58 @@ export const shapes = {
+   narrate: {
+     project: z.string().min(1).describe("Folder for the narration audio."),
+     engine: z
+-      .enum(["gemini", "mac"])
++      .enum(["gemini", "mac", "voicestudio"])
+       .default("gemini")
+       .describe(
+-        "'gemini' uses Google AI Studio's text-to-speech - the same voices Flow has, free on the AI Studio tier, no length limit, needs a key in ~/.flow-mcp/gemini-key. 'mac' uses a voice installed on this computer (macOS voices on a Mac, the built-in speech voices on Windows): free, instant, no key.",
++        "'gemini' uses Google AI Studio's text-to-speech - the same voices Flow has, free on the AI Studio tier, no length limit, needs a key in ~/.flow-mcp/gemini-key. 'mac' uses a voice installed on this computer (macOS voices on a Mac, the built-in speech voices on Windows): free, instant, no key. 'voicestudio' is the premium engine: the free VoiceStudio app running on this computer, with your own cloned or designed voices, 646 languages, personalities, effects, speed and quality control, and long scripts in one take. Check flow_voices first: it says whether VoiceStudio is running and lists its voices and options.",
+       ),
+-    text: z.string().min(1).max(400).describe("The line to speak. About 20 words fits 8 s, 30 words fits 12 s; anything longer needs a longer take."),
+-    voice: z.string().min(1).default("Charon").describe("Voice name from flow_voices, e.g. Charon (informative), Aoede (breezy), Gacrux (mature) for Google; Zoe or Samantha for macOS."),
+-    style: z.string().max(200).optional().describe("Delivery note for the 'gemini' engine, e.g. 'slowly and warmly, like a documentary narrator'."),
++    text: z
++      .string()
++      .min(1)
++      .max(20000)
++      .describe("The line to speak. About 20 words fits 8 s, 30 words fits 12 s. Google and computer voices take up to 400 characters a take; VoiceStudio takes a whole script (up to 20,000 characters) and joins it seamlessly."),
++    voice: z
++      .string()
++      .optional()
++      .describe("Voice name from flow_voices, e.g. Charon (informative), Aoede (breezy), Gacrux (mature) for Google; Zoe or Samantha for macOS; for VoiceStudio the name (or id) of a saved voice - leave it out for VoiceStudio's default voice."),
++    style: z
++      .string()
++      .max(200)
++      .optional()
++      .describe("Delivery note, e.g. 'slowly and warmly, like a documentary narrator' for Google. For VoiceStudio's own engine, describe the voice in its words instead: male/female, child to elderly, low/high pitch, whisper, an accent ('elderly, low pitch, british accent'); words it can't use are reported back."),
++    vs_engine: z.string().optional().describe("VoiceStudio only: which of its speech engines to use (an id from flow_voices' voicestudio.engines). Leave out for the one selected in VoiceStudio."),
++    preset_voice: z.string().optional().describe("VoiceStudio only: one of the chosen engine's built-in voices (voicestudio.engines[].preset_voices), for engines that ship them."),
++    language: z.string().optional().describe("VoiceStudio only: language of the text as an ISO code ('en', 'es', 'yo', 'fr'...) or 'Auto'. Leave out to use the voice's own saved language. 646 languages."),
++    personality: z.string().optional().describe("VoiceStudio only: a personality preset id from flow_voices (narrator, casual, news_anchor, storyteller...). Used when there is no `style` or `instruct`, which describe the voice more exactly and win over it."),
++    instruct: z.string().max(300).optional().describe("VoiceStudio only, advanced: the exact instruct text sent to the engine, instead of translating `style`."),
++    speed: z.number().min(0.5).max(2).optional().describe("VoiceStudio only: speaking speed, 0.5 (slow) to 2 (fast). Default 1."),
++    quality: z.enum(["draft", "balanced", "studio"]).optional().describe("VoiceStudio only: draft (fastest), balanced (default) or studio (cleanest, about twice as slow as balanced)."),
++    steps: z.number().int().min(4).max(64).optional().describe("VoiceStudio only, advanced: exact diffusion steps, instead of `quality`."),
++    guidance: z.number().min(0).max(10).optional().describe("VoiceStudio only, advanced: how closely the take follows the voice (default 2)."),
++    seed: z.number().int().min(0).optional().describe("VoiceStudio only: a fixed seed gives the same delivery every time; leave out for a fresh read."),
++    effect: z.string().optional().describe("VoiceStudio only: finishing effect - broadcast (default), cinematic, podcast, warm, bright or raw (see voicestudio.effects)."),
++    denoise: z.boolean().optional().describe("VoiceStudio only: clean up background noise in the take (default on)."),
++    target_seconds: z.number().min(1).max(3600).optional().describe("VoiceStudio only: make the take this many seconds long, e.g. to fit a shot exactly."),
++    bit_depth: z.enum(["16", "24", "32"]).optional().describe("VoiceStudio only: bit depth of the render before it is saved (default 24)."),
++    pronounce: z.boolean().optional().describe("VoiceStudio only: apply VoiceStudio's pronunciation dictionary and [[...]] overrides (default on)."),
++    normalize: z.boolean().optional().describe("VoiceStudio only: level the take like every other narration (default on); false keeps VoiceStudio's own loudness."),
++  },
++  voice_clone: {
++    name: z.string().min(1).max(80).describe("Name for the new voice, used later as flow_narrate's `voice`."),
++    audio: z.string().min(1).describe("Path to a recording on this computer: 5-30 seconds of one person speaking clearly, no music (wav, mp3, m4a, flac...). Only clone a voice with that person's permission."),
++    transcript: z.string().max(2000).optional().describe("What is said in the recording, word for word. Optional; it improves the likeness."),
++    language: z.string().optional().describe("Language of the recording (ISO code or 'Auto', the default)."),
++    style: z.string().max(200).optional().describe("Optional style saved with the voice."),
++  },
++  voice_design: {
++    name: z.string().min(1).max(80).describe("Name for the new voice, used later as flow_narrate's `voice`."),
++    description: z
++      .string()
++      .min(1)
++      .max(500)
++      .describe("The voice in VoiceStudio's words: male/female; child, teenager, young adult, middle-aged, elderly; very low to very high pitch; whisper; an accent (american, british, australian, canadian, indian, japanese, korean, chinese, russian, portuguese). E.g. 'an elderly man with a low pitch and a british accent'."),
++    language: z.string().optional().describe("The voice's language (ISO code or 'Auto', the default)."),
++    preview_only: z.boolean().default(false).describe("true shows how VoiceStudio understood the description and saves nothing."),
+   },
+   edit: {
+     project: z.string().min(1).describe("Local folder for the edited clip."),
+@@ -293,6 +338,8 @@ export interface Core {
+   techniques(a: Args<"techniques">): Promise<unknown>;
+   voices(): Promise<unknown>;
+   narrate(a: Args<"narrate">): Promise<unknown>;
++  voice_clone(a: Args<"voice_clone">): Promise<unknown>;
++  voice_design(a: Args<"voice_design">): Promise<unknown>;
+   character(a: Args<"character">): Promise<unknown>;
+   characters(): Promise<unknown>;
+   character_edit(a: Args<"character_edit">): Promise<unknown>;
+@@ -652,17 +699,37 @@ export class LocalCore implements Core {
+   async voices() {
+     // The panel words itself from these, so a PC never reads "this Mac".
+     const place = { computer: COMPUTER, bin: BIN, local_engine: IS_MAC ? "macOS voice" : IS_WIN ? "Windows voice" : "System voice", platform: process.platform };
+-    return { gemini: GEMINI_VOICES, gemini_ready: Boolean(geminiKey()), mac: await localVoices(), place };
++    const [mac, voicestudio] = await Promise.all([localVoices(), voiceStudioCatalog()]);
++    return { gemini: GEMINI_VOICES, gemini_ready: Boolean(geminiKey()), mac, voicestudio, place };
+   }
+ 
+-  async narrate({ project, text, voice, engine, style }: Args<"narrate">) {
++  async narrate(a: Args<"narrate">) {
++    const { project, engine } = a;
++    const text = a.text.trim();
++    if (engine !== "voicestudio" && text.length > 400) {
++      throw new Error(`That's ${text.length} characters; Google and computer voices take up to 400 a take. Split it into lines, or use engine "voicestudio", which takes a whole script.`);
++    }
+     const output_dir = projectDir(project);
+     mkdirSync(output_dir, { recursive: true });
+     const target = join(output_dir, `${this.nextStem(output_dir, "narration")}.m4a`);
+-    const spoken = engine === "mac" ? await speakLocally(text.trim(), voice, target) : await speakWithGemini(text.trim(), voice, target, style);
++    if (engine === "voicestudio") {
++      const spoken = await speakWithVoiceStudio(text, a, target);
++      return { output_dir, credits: 0, engine, voice: spoken.voicestudio.voice, ...spoken };
++    }
++    const voice = a.voice?.trim() || (engine === "mac" ? (IS_WIN ? "Microsoft Zira Desktop" : "Samantha") : "Charon");
++    const spoken = engine === "mac" ? await speakLocally(text, voice, target) : await speakWithGemini(text, voice, target, a.style);
+     return { output_dir, credits: 0, engine, voice, ...spoken };
+   }
+ 
++  async voice_clone(a: Args<"voice_clone">) {
++    if (!existsSync(a.audio)) throw new Error(`There's no file at ${a.audio}.`);
++    return cloneVoice(a);
++  }
++
++  async voice_design(a: Args<"voice_design">) {
++    return designVoice(a);
++  }
++
+   async techniques({ category }: Args<"techniques">) {
+     return TECHNIQUES.filter((t) => !category || t.category === category);
+   }
+diff --git a/src/index.ts b/src/index.ts
+index 3a149cb..8988d28 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -265,7 +265,7 @@ server.registerTool(
+   {
+     title: "Record narration in a Flow voice",
+     description:
+-      "Record narration as an .m4a, free and instantly. `engine: \"gemini\"` uses Google AI Studio's text-to-speech (the same voices Flow has, needs a free key in ~/.flow-mcp/gemini-key, and takes a `style` note like 'warmly, like a documentary narrator'); `engine: \"mac\"` uses a voice installed on this computer (macOS, or Windows' built-in speech voices). Neither costs credits or caps the length. flow_assemble can lay the result over a film.",
++      "Record narration as an .m4a, free. `engine: \"gemini\"` uses Google AI Studio's text-to-speech (the same voices Flow has, needs a free key in ~/.flow-mcp/gemini-key, and takes a `style` note like 'warmly, like a documentary narrator'); `engine: \"mac\"` uses a voice installed on this computer (macOS, or Windows' built-in speech voices). `engine: \"voicestudio\"` is the premium option: the free VoiceStudio app on this computer, speaking in the user's own cloned or designed voices, in 646 languages, with personality, speed, quality, effect, seed and exact-length control, and whole scripts in one take. Call flow_voices first to see whether VoiceStudio is running and which voices and options it has. None of them costs credits. flow_assemble can lay the result over a film.",
+     inputSchema: shapes.narrate,
+     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+   },
+@@ -276,13 +276,38 @@ server.registerTool(
+   "flow_voices",
+   {
+     title: "List Flow voices",
+-    description: "Narrator voices available for flow_narrate: Google AI Studio's (with whether a key is set up) and the English voices installed on this computer.",
++    description:
++      "Narrator voices available for flow_narrate: Google AI Studio's (with whether a key is set up), the voices installed on this computer, and VoiceStudio's - whether it is running, its saved voices, engines (with their built-in voices), personalities, effects and quality levels, plus how to install it if it isn't there.",
+     inputSchema: shapes.voices,
+     annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+   },
+   () => reply(core.voices()),
+ );
+ 
++server.registerTool(
++  "flow_voice_clone",
++  {
++    title: "Clone a voice in VoiceStudio",
++    description:
++      "Make a new VoiceStudio voice from a recording on this computer (5-30 seconds of one person speaking clearly). Only clone a voice with that person's permission - ask the user to confirm it is their own voice or that they have consent. Free and local. The new voice is then used as flow_narrate's `voice` with engine 'voicestudio'.",
++    inputSchema: shapes.voice_clone,
++    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
++  },
++  (args) => reply(patient("flow_voice_clone", core.voice_clone(args))),
++);
++
++server.registerTool(
++  "flow_voice_design",
++  {
++    title: "Design a voice in VoiceStudio",
++    description:
++      "Make a new VoiceStudio voice from a description (gender, age, pitch, whisper, accent), with no recording needed. Pass preview_only: true first to see how the description was understood. Free and local. The new voice is then used as flow_narrate's `voice` with engine 'voicestudio'.",
++    inputSchema: shapes.voice_design,
++    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
++  },
++  (args) => reply(patient("flow_voice_design", core.voice_design(args))),
++);
++
+ server.registerTool(
+   "flow_assemble",
+   {
+diff --git a/src/remote.ts b/src/remote.ts
+index be2f64c..e6bc5c0 100644
+--- a/src/remote.ts
++++ b/src/remote.ts
+@@ -25,6 +25,8 @@ export class RemoteCore implements Core {
+   techniques = (a: unknown) => call("techniques", a);
+   voices = () => call("voices", {});
+   narrate = (a: unknown) => call("narrate", a);
++  voice_clone = (a: unknown) => call("voice_clone", a);
++  voice_design = (a: unknown) => call("voice_design", a);
+   character = (a: unknown) => call("character", a);
+   characters = () => call("characters", {});
+   character_edit = (a: unknown) => call("character_edit", a);
+diff --git a/src/voicestudio.ts b/src/voicestudio.ts
+new file mode 100644
+index 0000000..6049c03
+--- /dev/null
++++ b/src/voicestudio.ts
+@@ -0,0 +1,333 @@
++import { execFile } from "node:child_process";
++import { readFileSync, rmSync, writeFileSync } from "node:fs";
++import { request as httpRequest } from "node:http";
++import { request as httpsRequest } from "node:https";
++import { basename } from "node:path";
++import { promisify } from "node:util";
++
++// VoiceStudio (github.com/debpalash/VoiceStudio) is a separate free desktop app. While it is open its backend listens on
++// localhost and speaks a plain HTTP API, so nothing is installed into flow-mcp: we only talk to it. Loopback callers need
++// no key; a backend on another machine takes OMNIVOICE_API_KEY like VoiceStudio's own clients.
++const run = promisify(execFile);
++const FFMPEG = process.env.FLOW_MCP_FFMPEG ?? "ffmpeg";
++export const VS_URL = (process.env.VOICESTUDIO_URL ?? `http://127.0.0.1:${process.env.OMNIVOICE_PORT ?? 3900}`).replace(/\/+$/, "");
++const KEY = process.env.OMNIVOICE_API_KEY?.trim();
++const auth = (): Record<string, string> => (KEY ? { authorization: `Bearer ${KEY}` } : {});
++
++// Steps the diffusion model takes per take: more is cleaner and slower. VoiceStudio's own labels.
++export const VS_QUALITY = { draft: 8, balanced: 16, studio: 32 } as const;
++
++export const VS_INSTALL = {
++  windows: "Open PowerShell and run:  irm https://voicestudio.sh/install | iex   (or download the .exe from github.com/debpalash/VoiceStudio/releases/latest)",
++  mac: "Open Terminal and run:  curl -fsSL https://voicestudio.sh/install | sh   (or download the .dmg from github.com/debpalash/VoiceStudio/releases/latest)",
++  then: "Open VoiceStudio once and let it finish its first-run setup (it downloads its voice model, about 2.3 GB). Keep it open while Flow uses it.",
++};
++
++const notRunning = () =>
++  new Error(
++    `VoiceStudio isn't running (nothing answered at ${VS_URL}).\n\n` +
++      `1. If it isn't installed yet: ${process.platform === "win32" ? VS_INSTALL.windows : VS_INSTALL.mac}\n` +
++      `2. ${VS_INSTALL.then}\n` +
++      `3. Try again.`,
++  );
++
++async function getJson<T>(path: string, timeoutMs = 8000): Promise<T> {
++  const res = await fetch(VS_URL + path, { headers: auth(), signal: AbortSignal.timeout(timeoutMs) }).catch(() => null);
++  if (!res) throw notRunning();
++  const body = await res.json().catch(() => null);
++  if (!res.ok) throw new Error(`VoiceStudio refused ${path} (${res.status}): ${detail(body)}`);
++  return body as T;
++}
++
++const detail = (body: unknown): string => {
++  const d = (body as { detail?: unknown } | null)?.detail;
++  if (typeof d === "string") return d;
++  if (Array.isArray(d)) return d.map((x) => (x as { msg?: string }).msg ?? JSON.stringify(x)).join("; ");
++  return d ? JSON.stringify(d) : "no detail";
++};
++
++// A take on a computer without a graphics card can run for many minutes before VoiceStudio sends a single header, and
++// fetch gives up on headers after five. node:http has no such limit, so posts go through it with our own deadline.
++async function postForm(path: string, form: FormData, timeoutMs: number): Promise<{ status: number; headers: Record<string, string>; body: Buffer }> {
++  const encoded = new Request("http://form.local", { method: "POST", body: form });
++  const payload = Buffer.from(await encoded.arrayBuffer());
++  const url = new URL(VS_URL + path);
++  const send = url.protocol === "https:" ? httpsRequest : httpRequest;
++  return new Promise((ok, fail) => {
++    const req = send(
++      url,
++      { method: "POST", headers: { ...auth(), "content-type": encoded.headers.get("content-type") ?? "", "content-length": payload.length } },
++      (res) => {
++        const chunks: Buffer[] = [];
++        res.on("data", (c: Buffer) => chunks.push(c));
++        res.on("end", () => {
++          const headers: Record<string, string> = {};
++          for (const [k, v] of Object.entries(res.headers)) if (typeof v === "string") headers[k] = v;
++          ok({ status: res.statusCode ?? 0, headers, body: Buffer.concat(chunks) });
++        });
++        res.on("error", fail);
++      },
++    );
++    req.setTimeout(timeoutMs, () => req.destroy(new Error(`VoiceStudio took longer than ${Math.round(timeoutMs / 60000)} minutes.`)));
++    req.on("error", (err: NodeJS.ErrnoException) => fail(err.code === "ECONNREFUSED" || err.code === "ENOTFOUND" ? notRunning() : err));
++    req.end(payload);
++  });
++}
++
++const formError = (path: string, r: { status: number; body: Buffer }) => {
++  let body: unknown = null;
++  try {
++    body = JSON.parse(r.body.toString("utf8"));
++  } catch {}
++  return new Error(`VoiceStudio refused ${path} (${r.status}): ${body ? detail(body) : r.body.toString("utf8").slice(0, 300) || "no detail"}`);
++};
++
++interface Profile {
++  id: string;
++  name: string;
++  kind?: string;
++  language?: string;
++  personality?: string;
++  instruct?: string;
++}
++interface Engine {
++  id: string;
++  display_name?: string;
++  available?: boolean;
++  reason?: string | null;
++  supports_cloning?: boolean | null;
++  supports_voice_design?: boolean | null;
++  instruct_vocabulary?: "tags" | "freeform";
++  preset_voices?: string[];
++  default_voice?: string | null;
++  effective_device?: string;
++}
++
++export async function voiceStudioStatus() {
++  const res = await fetch(VS_URL + "/health", { headers: auth(), signal: AbortSignal.timeout(4000) }).catch(() => null);
++  if (!res) return { running: false, ready: false, url: VS_URL, install: VS_INSTALL };
++  const body = (await res.json().catch(() => ({}))) as { status?: string; device?: string; version?: string; label?: string };
++  if (res.status === 503) return { running: true, ready: false, url: VS_URL, starting: body.label ?? "starting up", version: body.version };
++  return { running: true, ready: res.ok && body.status === "ok", url: VS_URL, device: body.device, version: body.version };
++}
++
++// Everything the panel and Claude can choose from, read live from the running app. Each part is fetched on its own,
++// so one missing endpoint on an older VoiceStudio never hides the rest.
++export async function voiceStudioCatalog() {
++  const status = await voiceStudioStatus();
++  if (!status.ready) return { ...status, voices: [], engines: [], personalities: [], effects: [], qualities: VS_QUALITY };
++  const [profiles, engines, personalities, effects] = await Promise.all([
++    getJson<Profile[]>("/profiles").catch(() => []),
++    getJson<{ active?: string; backends?: Engine[] }>("/engines/tts").catch(() => ({ active: undefined, backends: [] as Engine[] })),
++    getJson<{ id: string; name: string; description?: string; instruct?: string }[]>("/personalities").catch(() => []),
++    getJson<{ presets?: { id: string; label: string; description?: string }[] }>("/engines/effects/presets").catch(() => ({ presets: [] })),
++  ]);
++  return {
++    ...status,
++    voices: profiles.map((p) => ({ id: p.id, name: p.name, kind: p.kind ?? "clone", language: p.language ?? "Auto", personality: p.personality || undefined })),
++    active_engine: engines.active,
++    engines: (engines.backends ?? []).map((e) => ({
++      id: e.id,
++      name: e.display_name ?? e.id,
++      available: e.available !== false,
++      why_not: e.available === false ? e.reason ?? undefined : undefined,
++      cloning: e.supports_cloning !== false,
++      design: e.supports_voice_design !== false,
++      style_words: e.instruct_vocabulary ?? "freeform",
++      preset_voices: e.preset_voices ?? [],
++      default_voice: e.default_voice ?? undefined,
++      device: e.effective_device,
++    })),
++    personalities: personalities.map((p) => ({ id: p.id, name: p.name, description: p.description, instruct: p.instruct })),
++    effects: (effects.presets ?? []).map((e) => ({ id: e.id, label: e.label, description: e.description })),
++    qualities: VS_QUALITY,
++  };
++}
++
++// A voice can be named the way people say it ("Morgan") or by its id; an unknown name is an error, never a silent
++// switch to the default voice.
++async function resolveProfile(voice: string | undefined): Promise<Profile | undefined> {
++  if (!voice?.trim() || /^(default|auto)$/i.test(voice.trim())) return undefined;
++  const want = voice.trim().toLowerCase();
++  const profiles = await getJson<Profile[]>("/profiles");
++  const hit = profiles.find((p) => p.id === voice.trim()) ?? profiles.find((p) => p.name.toLowerCase() === want);
++  if (!hit) {
++    const names = profiles.map((p) => p.name).join(", ") || "none yet";
++    throw new Error(`VoiceStudio has no voice called "${voice}". Saved voices: ${names}. Make one with flow_voice_clone or flow_voice_design, or leave voice empty for VoiceStudio's default.`);
++  }
++  return hit;
++}
++
++export interface VoiceStudioTake {
++  voice?: string;
++  vs_engine?: string;
++  preset_voice?: string;
++  language?: string;
++  personality?: string;
++  style?: string;
++  instruct?: string;
++  speed?: number;
++  quality?: keyof typeof VS_QUALITY;
++  steps?: number;
++  guidance?: number;
++  seed?: number;
++  effect?: string;
++  denoise?: boolean;
++  target_seconds?: number;
++  bit_depth?: "16" | "24" | "32";
++  pronounce?: boolean;
++  normalize?: boolean;
++}
++
++// Free-text delivery notes only reach engines that read text. OmniVoice understands a fixed set of words (gender, age,
++// pitch, whisper, accent), so its notes go through VoiceStudio's own describe step first and whatever it can't map is
++// reported back rather than sent to fail. Engines that only speak in their built-in voices refuse any description, so
++// the note is left out for them instead of failing the take.
++async function styleToInstruct(style: string, engineId: string | undefined): Promise<{ instruct?: string; ignored: string[] }> {
++  const engines = await getJson<{ active?: string; backends?: Engine[] }>("/engines/tts").catch(() => null);
++  const id = engineId ?? engines?.active;
++  const engine = engines?.backends?.find((e) => e.id === id);
++  if (engine?.supports_voice_design === false) return { ignored: [style] };
++  if ((engine?.instruct_vocabulary ?? "tags") === "freeform") return { instruct: style, ignored: [] };
++  const res = await fetch(VS_URL + "/design/describe", {
++    method: "POST",
++    headers: { ...auth(), "content-type": "application/json" },
++    body: JSON.stringify({ description: style }),
++    signal: AbortSignal.timeout(30_000),
++  }).catch(() => null);
++  if (!res?.ok) return { ignored: [style] };
++  const parsed = (await res.json()) as { instruct?: string; unmatched?: string[] };
++  return { instruct: parsed.instruct || undefined, ignored: parsed.unmatched ?? [] };
++}
++
++export async function speakWithVoiceStudio(text: string, o: VoiceStudioTake, target: string) {
++  const status = await voiceStudioStatus();
++  if (!status.running) throw notRunning();
++  if (!status.ready) throw new Error(`VoiceStudio is still starting (${status.starting}). Wait a moment and try again.`);
++  const profile = await resolveProfile(o.voice);
++  const personalities = o.personality ? await getJson<{ id: string; name: string; instruct?: string }[]>("/personalities").catch(() => []) : [];
++  const persona = o.personality
++    ? personalities.find((p) => p.id === o.personality || p.name.toLowerCase() === o.personality!.toLowerCase())
++    : undefined;
++  if (o.personality && !persona) throw new Error(`VoiceStudio has no personality "${o.personality}". Choose one of: ${personalities.map((p) => p.id).join(", ")}.`);
++  const fromStyle = o.style && !o.instruct ? await styleToInstruct(o.style, o.vs_engine) : { instruct: undefined, ignored: [] as string[] };
++  // One description per take, never two merged: "elderly" from a note next to a personality's "middle-aged" would
++  // argue. The most specific wins - exact instruct, then the delivery note, then the personality.
++  const instruct = o.instruct || fromStyle.instruct || persona?.instruct || undefined;
++
++  const form = new FormData();
++  const put = (k: string, v: unknown) => v !== undefined && v !== null && v !== "" && form.append(k, String(v));
++  put("text", text);
++  put("profile_id", profile?.id);
++  put("engine", o.vs_engine);
++  put("preset_voice", o.preset_voice);
++  // Left out, not "Auto": VoiceStudio then uses the voice's own saved language.
++  put("language", o.language);
++  put("instruct", instruct);
++  put("speed", o.speed ?? 1);
++  put("num_step", o.steps ?? VS_QUALITY[o.quality ?? "balanced"]);
++  put("guidance_scale", o.guidance);
++  put("seed", o.seed);
++  put("effect_preset", o.effect ?? "broadcast");
++  put("denoise", o.denoise === undefined ? undefined : o.denoise ? "true" : "false");
++  put("duration", o.target_seconds);
++  put("wav_bits", o.bit_depth ?? "24");
++  put("pronounce", o.pronounce === undefined ? undefined : o.pronounce ? "true" : "false");
++
++  // Long text is split and crossfaded by VoiceStudio itself; allow a generous minute per 300 characters on a CPU.
++  const r = await postForm("/generate", form, Math.max(10 * 60_000, Math.ceil(text.length / 300) * 60_000 + 30 * 60_000));
++  if (r.status >= 400) throw formError("/generate", r);
++
++  const wav = target.replace(/\.\w+$/, "") + ".vs.wav";
++  writeFileSync(wav, r.body);
++  let output = target;
++  if (o.normalize === false) {
++    // Exactly what VoiceStudio rendered, only rewrapped for the films folder.
++    await run(FFMPEG, ["-v", "error", "-y", "-i", wav, "-c:a", "aac", "-b:a", "256k", target]).then(
++      () => rmSync(wav, { force: true }),
++      () => (output = keepWav(wav, target)),
++    );
++  } else {
++    // Same level as every other narration, so a VoiceStudio line sits evenly next to a Google one in flow_assemble.
++    await run(FFMPEG, ["-v", "error", "-y", "-i", wav, "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-ar", "48000", "-ac", "2", "-c:a", "aac", "-b:a", "256k", target]).then(
++      () => rmSync(wav, { force: true }),
++      () => (output = keepWav(wav, target)),
++    );
++  }
++  const duration = Number(r.headers["x-audio-duration"]);
++  return {
++    output,
++    duration: Number.isFinite(duration) ? duration : await probe(output),
++    voicestudio: {
++      voice: profile ? profile.name : "VoiceStudio default",
++      voice_id: profile?.id,
++      engine: o.vs_engine ?? "VoiceStudio's selected engine",
++      audio_id: r.headers["x-audio-id"],
++      render_seconds: Number(r.headers["x-gen-time"]) || undefined,
++      instruct,
++      style_words_ignored: fromStyle.ignored.length ? fromStyle.ignored : undefined,
++      note: output.endsWith(".wav") ? "ffmpeg isn't installed, so the take was kept as a .wav (still usable everywhere)." : undefined,
++    },
++  };
++}
++
++// Without ffmpeg the WAV itself becomes the narration, which every other tool here can read too.
++function keepWav(wav: string, target: string): string {
++  const out = target.replace(/\.\w+$/, ".wav");
++  writeFileSync(out, readFileSync(wav));
++  rmSync(wav, { force: true });
++  return out;
++}
++
++const probe = async (file: string) =>
++  Number((await run("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", file]).catch(() => ({ stdout: "0" }))).stdout.trim()) || 0;
++
++export async function cloneVoice(a: { name: string; audio: string; transcript?: string; language?: string; style?: string }) {
++  const status = await voiceStudioStatus();
++  if (!status.ready) throw status.running ? new Error("VoiceStudio is still starting. Wait a moment and try again.") : notRunning();
++  const form = new FormData();
++  form.append("name", a.name);
++  form.append("kind", "clone");
++  form.append("ref_text", a.transcript ?? "");
++  form.append("instruct", a.style ?? "");
++  form.append("language", a.language ?? "Auto");
++  form.append("ref_audio", new Blob([readFileSync(a.audio)]), basename(a.audio));
++  const r = await postForm("/profiles", form, 10 * 60_000);
++  if (r.status >= 400) throw formError("/profiles", r);
++  const p = JSON.parse(r.body.toString("utf8")) as Profile;
++  return { voice: p.name, voice_id: p.id, kind: p.kind, use_as: `flow_narrate engine "voicestudio", voice "${p.name}"` };
++}
++
++export async function describeVoice(description: string) {
++  const res = await fetch(VS_URL + "/design/describe", {
++    method: "POST",
++    headers: { ...auth(), "content-type": "application/json" },
++    body: JSON.stringify({ description }),
++    signal: AbortSignal.timeout(30_000),
++  }).catch(() => null);
++  if (!res) throw notRunning();
++  const body = (await res.json().catch(() => null)) as { attrs?: Record<string, string>; instruct?: string; matched?: string[]; unmatched?: string[] } | null;
++  if (!res.ok || !body) throw new Error(`VoiceStudio couldn't read that description (${res.status}): ${detail(body)}`);
++  return body;
++}
++
++export async function designVoice(a: { name: string; description: string; language?: string; preview_only?: boolean }) {
++  const parsed = await describeVoice(a.description);
++  if (a.preview_only) return { preview: true, understood: parsed.attrs, instruct: parsed.instruct, ignored: parsed.unmatched ?? [] };
++  if (!parsed.matched?.length) {
++    throw new Error(
++      `VoiceStudio couldn't turn that into a voice. It understands: male/female; child, teenager, young adult, middle-aged, elderly; very low to very high pitch; whisper; and accents (american, british, australian, canadian, indian, japanese, korean, chinese, russian, portuguese). For any other voice, clone one from a recording with flow_voice_clone.`,
++    );
++  }
++  const form = new FormData();
++  form.append("name", a.name);
++  form.append("kind", "design");
++  form.append("vd_states", JSON.stringify(parsed.attrs ?? {}));
++  form.append("instruct", parsed.instruct ?? "");
++  form.append("language", a.language ?? "Auto");
++  // Saving renders the voice's fixed sample, which waits its turn like any other take.
++  const r = await postForm("/profiles", form, 30 * 60_000);
++  if (r.status >= 400) throw formError("/profiles", r);
++  const p = JSON.parse(r.body.toString("utf8")) as Profile;
++  return { voice: p.name, voice_id: p.id, kind: p.kind, understood: parsed.attrs, ignored: parsed.unmatched ?? [], use_as: `flow_narrate engine "voicestudio", voice "${p.name}"` };
++}
+diff --git a/studio/index.html b/studio/index.html
+index 4471020..12246e5 100644
+--- a/studio/index.html
++++ b/studio/index.html
+@@ -85,6 +85,11 @@ input:focus,select:focus,textarea:focus{border-color:var(--tally)}
+ .cliprow span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:700 15px var(--mono);color:var(--bone)}
+ .cliprow button{flex:none;width:34px;height:34px;border-radius:50%;border:0;background:var(--bad);color:#fff;font:800 20px var(--body);cursor:pointer}
+ .slot .x{position:absolute;top:5px;right:5px;width:32px;height:32px;border-radius:50%;border:0;background:var(--bad);color:#fff;font:800 20px var(--body);cursor:pointer;z-index:2}
++.vsbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;padding:10px 12px;border:2px solid var(--line);border-radius:10px;background:var(--ink);font:700 15px var(--mono)}
++.vsbar span:nth-child(2){flex:1;min-width:0}
++.vsh{margin:4px 0 0;font:800 20px var(--display);letter-spacing:.04em;text-transform:uppercase}
++details.adv{margin-top:12px;border:2px dashed var(--line);border-radius:10px;padding:8px 12px}
++details.adv summary{cursor:pointer;font:700 15px var(--mono);color:var(--dim)}
+ .check{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:17px;cursor:pointer}
+ .check input{width:24px;height:24px;flex:none;accent-color:var(--tally)}
+ .add{width:100%;min-height:50px;border-style:dashed;font-size:21px}
+@@ -289,7 +294,7 @@ audio{width:100%;margin-top:8px;filter:invert(1) hue-rotate(180deg)}
+       <section class="panel" data-panel="narrate">
+         <div class="step">Step 4</div>
+         <h2>Voice</h2>
+-        <p class="lede">Record narration for free, at any length. <b>Google AI Studio</b> gives you the same voices Flow uses and takes a delivery note; <b data-place="local_engine">macOS voice</b> speaks with a voice installed on <span data-place="computer">this Mac</span> and needs no key. Neither spends credits.</p>
++        <p class="lede">Record narration for free, at any length. <b>Google AI Studio</b> gives you the same voices Flow uses and takes a delivery note; <b data-place="local_engine">macOS voice</b> speaks with a voice installed on <span data-place="computer">this Mac</span> and needs no key; <b>VoiceStudio ✦</b> is the premium studio: your own cloned or designed voices, 646 languages, personalities, effects, speed and quality. None of them spends credits.</p>
+         <div class="card">
+           <label class="f">Project folder</label><input type="text" id="n_project" placeholder="MyFilm">
+           <label class="f">Line to speak</label><textarea id="n_text" style="min-height:100px" placeholder="Sometimes the obstacles in your life aren't there to block you…"></textarea>
+@@ -300,14 +305,71 @@ audio{width:100%;margin-top:8px;filter:invert(1) hue-rotate(180deg)}
+             <div class="rowbtns" style="margin-top:0;flex-wrap:nowrap"><input type="password" id="n_key" autocomplete="off" spellcheck="false" placeholder="Paste your key" style="flex:1;min-width:0"><button type="button" class="btn small" id="n_keysave">Save key</button></div>
+             <p class="empty" id="n_keyStatus" style="margin-top:6px"></p>
+           </div>
+-          <div class="grid2">
++          <div class="grid2" id="n_voiceWrap">
+             <div><label class="f">Voice</label><select id="n_voice"></select></div>
+           </div>
+-          <div id="n_styleWrap"><label class="f">Delivery (optional)</label><input type="text" id="n_style" placeholder="slowly and warmly, like a documentary narrator"></div>
++          <div id="n_vsWrap" hidden>
++            <div class="vsbar"><span class="tally" id="vs_tally"></span><span id="vs_status">Checking VoiceStudio…</span><button type="button" class="btn small ghost" id="vs_refresh">Refresh</button></div>
++            <div class="grid2">
++              <div><label class="f" for="vs_voice">Voice</label><select id="vs_voice"></select></div>
++              <div><label class="f" for="vs_engine">Engine</label><select id="vs_engine"></select></div>
++              <div id="vs_presetWrap" hidden><label class="f" for="vs_preset">Built-in voice</label><select id="vs_preset"></select></div>
++              <div><label class="f" for="vs_lang">Language</label><input type="text" id="vs_lang" list="vs_langs" placeholder="The voice's own language" autocomplete="off"></div>
++              <div><label class="f" for="vs_persona">Personality</label><select id="vs_persona"></select></div>
++              <div><label class="f" for="vs_effect">Finish</label><select id="vs_effect"></select></div>
++            </div>
++            <datalist id="vs_langs"><option value="Auto"><option value="en">English</option><option value="es">Spanish</option><option value="fr">French</option><option value="de">German</option><option value="it">Italian</option><option value="pt">Portuguese</option><option value="yo">Yoruba</option><option value="ig">Igbo</option><option value="ha">Hausa</option><option value="sw">Swahili</option><option value="ar">Arabic</option><option value="hi">Hindi</option><option value="zh">Chinese</option><option value="ja">Japanese</option><option value="ko">Korean</option><option value="ru">Russian</option><option value="tr">Turkish</option><option value="nl">Dutch</option></datalist>
++            <label class="f" for="vs_speed">Speed <span id="vs_speedVal">1.00×</span></label>
++            <input type="range" id="vs_speed" min="0.5" max="2" step="0.05" value="1" style="width:100%">
++            <label class="f">Quality</label><div class="seg" data-seg="vs_quality"></div>
++            <div class="grid2">
++              <div><label class="f" for="vs_seed">Seed (same read every time)</label><input type="number" id="vs_seed" min="0" step="1" placeholder="Fresh each take"></div>
++              <div><label class="f" for="vs_target">Exact length, seconds</label><input type="number" id="vs_target" min="1" max="3600" step="0.1" placeholder="Natural length"></div>
++            </div>
++            <details class="adv"><summary>Advanced</summary>
++              <div class="grid2">
++                <div><label class="f" for="vs_steps">Steps (overrides quality)</label><input type="number" id="vs_steps" min="4" max="64" step="1" placeholder="From quality"></div>
++                <div><label class="f" for="vs_guidance">Guidance</label><input type="number" id="vs_guidance" min="0" max="10" step="0.1" placeholder="2.0"></div>
++                <div><label class="f" for="vs_bits">Bit depth</label><select id="vs_bits"><option value="16">16-bit</option><option value="24">24-bit</option><option value="32">32-bit</option></select></div>
++                <div><label class="f" for="vs_instruct">Exact instruct (overrides delivery)</label><input type="text" id="vs_instruct" placeholder="e.g. female, young adult, high pitch"></div>
++              </div>
++              <label class="check"><input type="checkbox" id="vs_denoise">Clean up background noise</label>
++              <label class="check"><input type="checkbox" id="vs_pronounce">Use my pronunciation dictionary</label>
++              <label class="check"><input type="checkbox" id="vs_normalize">Level it like my other narrations</label>
++            </details>
++          </div>
++          <div id="n_styleWrap"><label class="f" id="n_styleLabel">Delivery (optional)</label><input type="text" id="n_style" placeholder="slowly and warmly, like a documentary narrator"></div>
+           <p class="empty" id="n_fit" style="margin-top:10px"></p>
+           <div class="rowbtns"><button class="btn" id="n_go">Record take</button></div>
+           <div id="n_out" style="margin-top:16px"></div>
+         </div>
++        <div id="vs_makeWrap" hidden>
++          <h2 style="margin-top:18px">Make a VoiceStudio voice <small>free, stays on <span data-place="computer">this Mac</span></small></h2>
++          <div class="card">
++            <div class="grid2">
++              <div>
++                <h3 class="vsh">Clone from a recording</h3>
++                <label class="f" for="vc_name">Name</label><input type="text" id="vc_name" placeholder="My voice">
++                <label class="f">Recording (5–30 s, one speaker, no music)</label>
++                <div class="rowbtns" style="margin-top:0"><button type="button" class="btn small" id="vc_pick">Choose file</button><span class="empty" id="vc_file" style="align-self:center">No file yet</span></div>
++                <input type="file" id="vc_input" accept="audio/*,video/*" hidden>
++                <label class="f" for="vc_text">What it says (optional, improves likeness)</label><input type="text" id="vc_text">
++                <label class="f" for="vc_lang">Language</label><input type="text" id="vc_lang" list="vs_langs" placeholder="Auto">
++                <label class="check"><input type="checkbox" id="vc_ok">This is my voice, or I have the speaker's permission</label>
++                <div class="rowbtns"><button class="btn" id="vc_go">Clone voice</button></div>
++              </div>
++              <div>
++                <h3 class="vsh">Design from a description</h3>
++                <label class="f" for="vd_name">Name</label><input type="text" id="vd_name" placeholder="Old storyteller">
++                <label class="f" for="vd_desc">Describe it</label><textarea id="vd_desc" style="min-height:90px" placeholder="an elderly man with a low pitch and a british accent"></textarea>
++                <p class="empty" style="margin-top:6px">VoiceStudio understands: male/female · child, teenager, young adult, middle-aged, elderly · very low to very high pitch · whisper · accents (american, british, australian, canadian, indian, japanese, korean, chinese, russian, portuguese).</p>
++                <label class="f" for="vd_lang">Language</label><input type="text" id="vd_lang" list="vs_langs" placeholder="Auto">
++                <div class="rowbtns"><button class="btn small ghost" id="vd_preview">Check description</button><button class="btn" id="vd_go">Design voice</button></div>
++              </div>
++            </div>
++            <div id="vs_makeOut" style="margin-top:12px"></div>
++          </div>
++        </div>
+         <h2 style="margin-top:18px">Your narrations <small>saved on <span data-place="computer">this Mac</span></small></h2>
+         <div class="card"><div id="n_takes"><p class="empty">No narrations saved yet.</p></div></div>
+       </section>
+@@ -455,12 +517,14 @@ const DEFAULTS = {
+   tab: "cast",
+   frames: { project: "MyFilm", aspect: "16:9", variants: 1, engine: "exact", scenes: [blank()] },
+   shots: { project: "MyFilm", model: "Omni 1.1 Flash", aspect: "16:9", duration: 8, resolution: "720p", variants: 1, quality: "original", max: 25, scenes: [blank()] },
+-  narrate: { project: "MyFilm", engine: "gemini", geminiVoice: "Charon", macVoice: "Zoe (Premium)", text: "", style: "" },
++  narrate: { project: "MyFilm", engine: "gemini", geminiVoice: "Charon", macVoice: "Zoe (Premium)", text: "", style: "", vs: null },
+   cut: { project: "MyFilm", music: null, voiceover: null, hold: true, clips: [] },
+   captions: { video: null, style: "bold", position: "bottom", size: 100, colors: {}, text: "" },
+ };
+ const S = Object.assign(structuredClone(DEFAULTS), JSON.parse(localStorage.getItem("flow-studio-v2") || "{}"));
+ const save = () => localStorage.setItem("flow-studio-v2", JSON.stringify(S));
++const VS_DEFAULTS = { voice: "", engine: "", preset: "", language: "", personality: "", effect: "broadcast", speed: 1, quality: "balanced", seed: "", target: "", steps: "", guidance: "", bits: "24", instruct: "", denoise: true, pronounce: true, normalize: true };
++S.narrate.vs = { ...VS_DEFAULTS, ...(S.narrate.vs ?? {}) };
+ let TECH = [], VOICES = { gemini: [], mac: [] }, CAST = [], LIB = [], GAL = [], castImage = null, pickTarget = null, busy = false;
+ 
+ /* ---------- tabs ---------- */
+@@ -491,7 +555,8 @@ const SEGS = {
+   s_variants: { get: () => S.shots.variants, set: (v) => (S.shots.variants = +v), opts: [1, 2, 3, 4] },
+   cap_pos: { get: () => (typeof S.captions.position === "string" ? S.captions.position : ""), set: (v) => { S.captions.position = v; capPreviewSoon(); }, opts: ["bottom", "middle", "top"], labels: { bottom: "Bottom", middle: "Middle", top: "Top" } },
+   cap_letters: { get: () => capLetters(S.captions.style), set: (v) => { (S.captions.letters ??= {})[S.captions.style] = v; capPreviewSoon(); }, opts: ["as_said", "capitals", "lowercase"], labels: { as_said: "Normal", capitals: "CAPS", lowercase: "lower" } },
+-  n_engine: { get: () => S.narrate.engine, set: (v) => (S.narrate.engine = v), opts: ["gemini", "mac"], labels: { gemini: "Google AI Studio", get mac() { return PLACE.local_engine; } } },
++  n_engine: { get: () => S.narrate.engine, set: (v) => (S.narrate.engine = v), opts: ["gemini", "mac", "voicestudio"], labels: { gemini: "Google AI Studio", get mac() { return PLACE.local_engine; }, voicestudio: "VoiceStudio ✦" } },
++  vs_quality: { get: () => S.narrate.vs.quality, set: (v) => (S.narrate.vs.quality = v), opts: ["draft", "balanced", "studio"], labels: { draft: "Draft · fast", balanced: "Balanced", studio: "Studio · best" } },
+ };
+ function renderSegs() {
+   for (const [key, cfg] of Object.entries(SEGS)) {
+@@ -683,38 +748,107 @@ document.addEventListener("click", (e) => {
+ });
+ 
+ /* ---------- narrate ---------- */
++const VSF = {
++  voice: "#vs_voice", engine: "#vs_engine", preset: "#vs_preset", language: "#vs_lang", personality: "#vs_persona", effect: "#vs_effect",
++  speed: "#vs_speed", seed: "#vs_seed", target: "#vs_target", steps: "#vs_steps", guidance: "#vs_guidance", bits: "#vs_bits", instruct: "#vs_instruct",
++};
++const VSC = { denoise: "#vs_denoise", pronounce: "#vs_pronounce", normalize: "#vs_normalize" };
++const opt = (value, label, picked) => `<option value="${esc(value)}" ${String(value) === String(picked) ? "selected" : ""}>${esc(label)}</option>`;
++function renderVoiceStudio() {
++  const vs = VOICES.voicestudio ?? {}, st = S.narrate.vs;
++  $("#vs_tally").className = "tally " + (vs.ready ? "ready" : vs.running ? "rolling" : "down");
++  $("#vs_status").innerHTML = vs.ready
++    ? `VoiceStudio ${esc(vs.version ?? "")} is ready on ${esc(vs.device ?? "this computer")} · ${(vs.voices ?? []).length} saved voice(s)`
++    : vs.running
++      ? `VoiceStudio is starting (${esc(vs.starting ?? "loading")}). Press Refresh in a moment.`
++      : `VoiceStudio isn't running. <b>Install it free</b>: ${PLACE.platform === "win32" ? "in PowerShell run <code>irm https://voicestudio.sh/install | iex</code>" : "in Terminal run <code>curl -fsSL https://voicestudio.sh/install | sh</code>"}, or download it from <a href="https://github.com/debpalash/VoiceStudio/releases/latest" target="_blank" rel="noopener">its releases page</a>. Open it once to finish setup, keep it open, then press Refresh.`;
++  $("#vs_voice").innerHTML = opt("", "VoiceStudio's default voice", st.voice) + (vs.voices ?? []).map((v) => opt(v.name, `${v.name} — ${v.kind === "design" ? "designed" : "cloned"}${v.language && v.language !== "Auto" ? ", " + v.language : ""}`, st.voice)).join("");
++  $("#vs_engine").innerHTML = opt("", `VoiceStudio's choice${vs.active_engine ? " (" + vs.active_engine + ")" : ""}`, st.engine) + (vs.engines ?? []).map((e) => opt(e.id, `${e.name}${e.available ? "" : " — not installed"}${e.cloning ? "" : " · no cloning"}`, st.engine)).join("");
++  const eng = (vs.engines ?? []).find((e) => e.id === (st.engine || vs.active_engine));
++  const presets = eng?.preset_voices ?? [];
++  $("#vs_presetWrap").hidden = !presets.length;
++  $("#vs_preset").innerHTML = opt("", `Engine default${eng?.default_voice ? " (" + eng.default_voice + ")" : ""}`, st.preset) + presets.map((p) => opt(p, p, st.preset)).join("");
++  $("#vs_persona").innerHTML = opt("", "None", st.personality) + (vs.personalities ?? []).map((p) => opt(p.id, `${p.name}${p.description ? " — " + p.description : ""}`, st.personality)).join("");
++  const effects = vs.effects?.length ? vs.effects : [{ id: "broadcast", label: "Broadcast" }, { id: "cinematic", label: "Cinematic" }, { id: "podcast", label: "Podcast" }, { id: "warm", label: "Warm" }, { id: "bright", label: "Bright" }, { id: "raw", label: "Raw" }];
++  $("#vs_effect").innerHTML = effects.map((e) => opt(e.id, `${e.label}${e.description ? " — " + e.description : ""}`, st.effect)).join("");
++  for (const [k, sel] of Object.entries(VSF)) if (!["voice", "engine", "preset", "personality", "effect"].includes(k) && document.activeElement !== $(sel)) $(sel).value = st[k] ?? "";
++  for (const [k, sel] of Object.entries(VSC)) $(sel).checked = st[k] !== false;
++  $("#vs_speedVal").textContent = `${Number(st.speed || 1).toFixed(2)}×`;
++}
+ function renderNarrate() {
+-  const mac = S.narrate.engine === "mac";
++  const eng = S.narrate.engine, mac = eng === "mac", vsOn = eng === "voicestudio";
+   const list = (mac ? VOICES.mac : VOICES.gemini) ?? [];
+   const picked = mac ? S.narrate.macVoice : S.narrate.geminiVoice;
+   $("#n_voice").innerHTML = list.map((v) => `<option value="${v.name}" ${v.name === picked ? "selected" : ""}>${v.name} — ${v.description}</option>`).join("") || `<option value="">No voices found</option>`;
++  $("#n_voiceWrap").hidden = vsOn;
++  $("#n_vsWrap").hidden = !vsOn;
++  $("#vs_makeWrap").hidden = !vsOn;
+   $("#n_styleWrap").style.display = mac ? "none" : "";
+-  $("#n_engineNote").innerHTML = !mac
+-    ? (VOICES.gemini_ready
+-        ? "Google's own text-to-speech — the same voices Flow uses, free on the AI Studio tier, any length, and no Flow credits."
+-        : `<b>Needs a free key.</b> Get one at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> and paste it below. Same voices as Flow, free, no length limit.`)
+-    : `Spoken on ${PLACE.computer} — free, instant, any length. Quality depends on the installed voice: ${PLACE.platform === "win32" ? "add more English voices in <b>Settings → Time &amp; language → Speech</b> and they appear here" : "download a <b>Premium</b> English voice in System Settings → Accessibility → Spoken Content → System Voice → Manage Voices and it appears here automatically"}. ${(VOICES.mac ?? []).length} voice(s) available.`;
+-  $("#n_keyWrap").hidden = mac;
++  $("#n_styleLabel").textContent = vsOn ? "Delivery (optional, in VoiceStudio's words)" : "Delivery (optional)";
++  $("#n_style").placeholder = vsOn ? "middle-aged, low pitch, british accent" : "slowly and warmly, like a documentary narrator";
++  $("#n_engineNote").innerHTML = vsOn
++    ? "<b>Premium.</b> VoiceStudio runs free on this computer: speak in your own cloned or designed voices, in 646 languages, with personality, finish, speed and quality control, and whole scripts in one take."
++    : !mac
++      ? (VOICES.gemini_ready
++          ? "Google's own text-to-speech — the same voices Flow uses, free on the AI Studio tier, any length, and no Flow credits."
++          : `<b>Needs a free key.</b> Get one at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> and paste it below. Same voices as Flow, free, no length limit.`)
++      : `Spoken on ${PLACE.computer} — free, instant, any length. Quality depends on the installed voice: ${PLACE.platform === "win32" ? "add more English voices in <b>Settings → Time &amp; language → Speech</b> and they appear here" : "download a <b>Premium</b> English voice in System Settings → Accessibility → Spoken Content → System Voice → Manage Voices and it appears here automatically"}. ${(VOICES.mac ?? []).length} voice(s) available.`;
++  $("#n_keyWrap").hidden = eng !== "gemini";
+   $("#n_keyStatus").innerHTML = VOICES.gemini_ready
+     ? `A key is saved on ${PLACE.computer}. Paste a new one only to replace it.`
+     : `Paste it here, not into a chat — it's saved only on ${PLACE.computer} and checked with Google first.`;
+-  const words = $("#n_text").value.trim().split(/\s+/).filter(Boolean).length;
+-  const secs = Math.ceil(words / 2.5);
+-  $("#n_fit").textContent = words ? `${words} words ≈ ${secs}s of speech. No length limit, no credits.` : "";
++  if (vsOn) renderVoiceStudio();
++  const text = $("#n_text").value.trim();
++  const words = text.split(/\s+/).filter(Boolean).length;
++  const secs = Math.ceil(words / 2.5 / (vsOn ? Number(S.narrate.vs.speed || 1) : 1));
++  const limit = vsOn ? 20000 : 400;
++  $("#n_fit").textContent = !words ? "" : text.length > limit
++    ? `${text.length} characters — over the ${limit} this engine takes in one go.${vsOn ? "" : " Use VoiceStudio for a whole script."}`
++    : `${words} words ≈ ${secs}s of speech. No credits.`;
+ }
+ $("#n_text").addEventListener("input", () => { S.narrate.text = $("#n_text").value; save(); renderNarrate(); });
+ $("#n_voice").addEventListener("change", () => { S.narrate[S.narrate.engine === "mac" ? "macVoice" : "geminiVoice"] = $("#n_voice").value; save(); });
+ $("#n_style").addEventListener("input", () => { S.narrate.style = $("#n_style").value; save(); });
++for (const [k, sel] of Object.entries(VSF)) {
++  $(sel).addEventListener(/^(voice|engine|preset|personality|effect|bits)$/.test(k) ? "change" : "input", () => {
++    S.narrate.vs[k] = k === "speed" ? Number($(sel).value) : $(sel).value; save();
++    if (k === "engine") { S.narrate.vs.preset = ""; renderVoiceStudio(); }
++    if (k === "speed") { $("#vs_speedVal").textContent = `${Number($(sel).value).toFixed(2)}×`; renderNarrate(); }
++  });
++}
++for (const [k, sel] of Object.entries(VSC)) $(sel).addEventListener("change", () => { S.narrate.vs[k] = $(sel).checked; save(); });
++async function refreshVoices(quiet) {
++  if (!LIVE) return;
++  const b = $("#vs_refresh"); b.disabled = true; b.textContent = "Checking…";
++  try { VOICES = await api("voices"); renderNarrate(); if (!quiet) toast(VOICES.voicestudio?.ready ? "VoiceStudio is ready" : "VoiceStudio isn't ready yet", !VOICES.voicestudio?.ready); }
++  catch (err) { toast(err.message, true); }
++  b.disabled = false; b.textContent = "Refresh";
++}
++$("#vs_refresh").onclick = () => refreshVoices(false);
++const num = (v) => (v === "" || v === null || v === undefined ? undefined : Number(v));
++function voiceStudioArgs() {
++  const v = S.narrate.vs;
++  return {
++    voice: v.voice || undefined, vs_engine: v.engine || undefined, preset_voice: v.preset || undefined, language: v.language.trim() || undefined,
++    personality: v.personality || undefined, effect: v.effect || undefined, speed: Number(v.speed || 1), quality: v.quality,
++    seed: num(v.seed), target_seconds: num(v.target), steps: num(v.steps), guidance: num(v.guidance), bit_depth: v.bits || "24",
++    instruct: v.instruct.trim() || undefined, denoise: v.denoise, pronounce: v.pronounce, normalize: v.normalize,
++  };
++}
+ $("#n_go").onclick = async () => {
+   if (!guard()) return;
+   const text = $("#n_text").value.trim(); if (!text) return toast("Write the line first.", true);
+-  const eng = S.narrate.engine, mac = eng === "mac";
++  const eng = S.narrate.engine, mac = eng === "mac", vsOn = eng === "voicestudio";
++  if (vsOn && !VOICES.voicestudio?.ready) { await refreshVoices(true); if (!VOICES.voicestudio?.ready) return toast("VoiceStudio isn't running yet — see the note above.", true); }
+   const voice = mac ? S.narrate.macVoice : S.narrate.geminiVoice;
+-  const b = $("#n_go"); b.disabled = true; b.textContent = "Recording…";
++  const b = $("#n_go"); b.disabled = true; b.textContent = vsOn ? "Rendering in VoiceStudio…" : "Recording…";
+   try {
+-    const out = await api("narrate", { project: $("#n_project").value.trim() || S.narrate.project, text, voice, engine: eng, style: mac ? undefined : $("#n_style").value.trim() || undefined });
++    const style = mac ? undefined : $("#n_style").value.trim() || undefined;
++    const body = vsOn ? { project: $("#n_project").value.trim() || S.narrate.project, text, engine: eng, style, ...voiceStudioArgs() } : { project: $("#n_project").value.trim() || S.narrate.project, text, voice, engine: eng, style };
++    const out = await api("narrate", body);
+     {
+-      $("#n_out").innerHTML = `<audio controls src="${media(out.output)}&t=${Date.now()}"></audio><p class="empty" style="margin-top:8px">${out.duration.toFixed(1)}s · free · ${esc(out.output)}</p>
++      const vsInfo = out.voicestudio ? ` · ${esc(out.voicestudio.voice)}${out.voicestudio.render_seconds ? ` · rendered in ${out.voicestudio.render_seconds.toFixed(1)}s` : ""}${out.voicestudio.style_words_ignored ? `<br>Not understood, so left out: ${esc(out.voicestudio.style_words_ignored.join(", "))}` : ""}${out.voicestudio.note ? `<br>${esc(out.voicestudio.note)}` : ""}` : "";
++      $("#n_out").innerHTML = `<audio controls src="${media(out.output)}&t=${Date.now()}"></audio><p class="empty" style="margin-top:8px">${out.duration.toFixed(1)}s · free${vsInfo} · ${esc(out.output)}</p>
+         <div class="rowbtns"><button class="btn small" data-usevo="${esc(out.output)}">Use in Cut</button></div>`;
+       loadGallery();
+     }
+@@ -722,6 +856,55 @@ $("#n_go").onclick = async () => {
+   b.disabled = false; b.textContent = "Record take";
+ };
+ 
++/* ---------- make a VoiceStudio voice ---------- */
++let vcAudio = null;
++const makeOut = (html, bad) => ($("#vs_makeOut").innerHTML = `<p class="empty" style="white-space:pre-wrap${bad ? ";color:var(--bad)" : ""}">${html}</p>`);
++$("#vc_pick").onclick = () => $("#vc_input").click();
++$("#vc_input").addEventListener("change", async (e) => {
++  const f = e.target.files[0]; e.target.value = ""; if (!f || !guard()) return;
++  try {
++    const res = await fetch(`/api/upload?name=${encodeURIComponent(f.name)}`, { method: "POST", headers: { "x-flow-token": TOKEN }, body: f });
++    const data = await res.json(); if (!res.ok) throw new Error(data.error);
++    vcAudio = data.path; $("#vc_file").textContent = f.name;
++  } catch (err) { toast(err.message, true); }
++});
++async function afterNewVoice(out) {
++  S.narrate.vs.voice = out.voice; save();
++  await refreshVoices(true);
++  makeOut(`Saved <b>${esc(out.voice)}</b> in VoiceStudio and picked it above.${out.ignored?.length ? `<br>Not understood, so left out: ${esc(out.ignored.join(", "))}` : ""}`);
++  toast(`Voice "${out.voice}" is ready`);
++}
++$("#vc_go").onclick = async () => {
++  if (!guard()) return;
++  const name = $("#vc_name").value.trim();
++  if (!name) return toast("Give the voice a name.", true);
++  if (!vcAudio) return toast("Choose a recording first.", true);
++  if (!$("#vc_ok").checked) return toast("Only clone a voice that's yours or that you have permission to use. Tick the box to confirm.", true);
++  const b = $("#vc_go"); b.disabled = true; b.textContent = "Cloning…";
++  try { await afterNewVoice(await api("voice_clone", { name, audio: vcAudio, transcript: $("#vc_text").value.trim() || undefined, language: $("#vc_lang").value.trim() || undefined })); }
++  catch (err) { makeOut(esc(err.message), true); toast(err.message, true); }
++  b.disabled = false; b.textContent = "Clone voice";
++};
++$("#vd_preview").onclick = async () => {
++  if (!guard()) return;
++  const description = $("#vd_desc").value.trim(); if (!description) return toast("Describe the voice first.", true);
++  try {
++    const out = await api("voice_design", { name: $("#vd_name").value.trim() || "preview", description, preview_only: true });
++    const got = Object.entries(out.understood ?? {}).filter(([, v]) => v && v !== "Auto").map(([k, v]) => `${k}: ${v}`);
++    makeOut(`${got.length ? `Understood — ${esc(got.join(" · "))}` : "Nothing in that description could be used."}${out.ignored?.length ? `<br>Left out: ${esc(out.ignored.join(", "))}` : ""}`, !got.length);
++  } catch (err) { makeOut(esc(err.message), true); }
++};
++$("#vd_go").onclick = async () => {
++  if (!guard()) return;
++  const name = $("#vd_name").value.trim(), description = $("#vd_desc").value.trim();
++  if (!name) return toast("Give the voice a name.", true);
++  if (!description) return toast("Describe the voice first.", true);
++  const b = $("#vd_go"); b.disabled = true; b.textContent = "Designing…";
++  try { await afterNewVoice(await api("voice_design", { name, description, language: $("#vd_lang").value.trim() || undefined })); }
++  catch (err) { makeOut(esc(err.message), true); toast(err.message, true); }
++  b.disabled = false; b.textContent = "Design voice";
++};
++
+ $("#n_out").addEventListener("click", (e) => {
+   const u = e.target.closest("[data-usevo]"); if (!u) return;
+   S.cut.voiceover = { path: u.dataset.usevo, name: u.dataset.usevo.split(/[\\/]/).pop() };
+@@ -1037,7 +1220,7 @@ function estimate() {
+   } else {
+     const narrateCost = "Free";
+     $("#estNum").textContent = { cast: "Free", narrate: narrateCost, restyle: "≈ 20 credits", cut: "Free", library: "Free" }[tab] ?? "";
+-    $("#estSub").textContent = { cast: "characters cost nothing", narrate: S.narrate.engine === "mac" ? `spoken on ${PLACE.computer}` : "Google AI Studio, free", restyle: "use Restyle clip", cut: "use Assemble film", library: "downloads cost nothing" }[tab] ?? "";
++    $("#estSub").textContent = { cast: "characters cost nothing", narrate: S.narrate.engine === "mac" ? `spoken on ${PLACE.computer}` : S.narrate.engine === "voicestudio" ? "VoiceStudio, on this computer" : "Google AI Studio, free", restyle: "use Restyle clip", cut: "use Assemble film", library: "downloads cost nothing" }[tab] ?? "";
+     btn.disabled = true;
+   }
+ }
+@@ -1187,7 +1370,7 @@ for (const [id, path] of [["f_project", "frames"], ["s_project", "shots"], ["n_p
+     $("#status").innerHTML = `<span class="pill"><i class="tally down"></i>Not connected</span>`;
+     renderAll(); showTab(S.tab); return;
+   }
+-  try { [TECH, VOICES] = await Promise.all([api("techniques"), api("voices")]); } catch { VOICES = { gemini: [], mac: [] }; }
++  try { [TECH, VOICES] = await Promise.all([api("techniques"), api("voices")]); } catch { VOICES = { gemini: [], mac: [], voicestudio: {} }; }
+   applyPlace(VOICES.place);
+   loadCast().then((c) => { CAST = c; renderCast(); }).catch(() => {});
+   renderAll(); showTab(S.tab); poll(true); loadGallery();
+-- 
+2.43.0
+
