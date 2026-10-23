@@ -1,21 +1,15 @@
-# flow-mcp + VoiceStudio upgrade
+# flow-mcp upgrades
 
-Adds [VoiceStudio](https://github.com/debpalash/VoiceStudio) to
-[flow-mcp](https://github.com/GTAI-1/flow-mcp) as a premium narration engine. It is based on flow-mcp commit `84b548f`.
+These upgrades are for [flow-mcp](https://github.com/GTAI-1/flow-mcp), based on commit `84b548f`.
 
-- `flow-mcp-voicestudio.zip`: the 6 changed files. Extract it into your flow-mcp folder, replacing the old files.
-- `voicestudio.patch`: the same change as a git patch (`git am voicestudio.patch`).
+- **`flow-mcp-drama-studio.zip`** is the latest upgrade. It has the VoiceStudio engine and the Drama Studio, which
+  makes a whole micro-drama from a title and an idea. It contains every changed file: extract it into your flow-mcp
+  folder and replace the old files. `drama-studio.patch` is the same change as git patches (`git am drama-studio.patch`).
+- `flow-mcp-voicestudio.zip` / `voicestudio.patch` are the earlier VoiceStudio-only upgrade, already included above.
 
-After either one, run `npm run build` in the flow-mcp folder, then fully quit and reopen Claude.
+After extracting, run these in the flow-mcp folder, then fully quit and reopen Claude:
 
-## What it adds
-
-- `flow_narrate` with `engine: "voicestudio"`: your cloned or designed voices, an engine and its built-in voices,
-  language (646), personality, speed, quality (draft / balanced / studio) or exact steps, guidance, seed, finishing
-  effect, denoise, exact length, bit depth, pronunciation dictionary, loudness levelling, and scripts up to 20,000
-  characters.
-- `flow_voice_clone`: a new voice from a 5-30 s recording (only with the speaker's permission).
-- `flow_voice_design`: a new voice from a description, with a preview mode that saves nothing.
-- `flow_voices`: also reports whether VoiceStudio is running, its voices, engines, personalities and effects, and
-  how to install it.
-- Flow Studio → Voice → **VoiceStudio ✦**: the same controls, a status light, and clone and design forms.
+```
+npm install
+npm run build
+```
