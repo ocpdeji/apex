@@ -1,5 +1,7 @@
 # flow-mcp upgrades
 
+**Use `flow-mcp-COMPLETE.zip`.** It is the whole project (every file) with the VoiceStudio engine and the Drama Studio included, and it builds from nothing. The other zips hold only changed files and need a flow-mcp folder that is already up to date.
+
 These upgrades are for [flow-mcp](https://github.com/GTAI-1/flow-mcp), based on commit `84b548f`.
 
 - **`flow-mcp-drama-studio.zip`** is the latest upgrade. It has the VoiceStudio engine and the Drama Studio, which
